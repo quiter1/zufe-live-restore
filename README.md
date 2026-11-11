@@ -15,18 +15,27 @@
 
 脚本会把两路直播流直接接管过来，并把「直播已结束」那层遮掉；窗口拉伸、页面缩放时画面**自动跟随**容器尺寸。
 
-## 安装
+## 安装（点一次，之后自动更新）
 
 1. 给 Edge/Chrome 装 **Tampermonkey** 扩展
    - Edge 商店：<https://microsoftedge.microsoft.com/addons/detail/iikmkjmpaadaobahmlepeloendndfphd>
 2. **新版 Edge 必须额外开一步**：`edge://extensions/` → Tampermonkey → 详细信息 → 打开 **「允许用户脚本」**
-3. 安装脚本（二选一）：
-   - 把 `zufe-live-restore.user.js` 拖进浏览器 → 点【安装】
-   - 或油猴面板 → `+` 新建脚本 → 全选删除 → 粘贴本文件 → `Ctrl+S`
+3. 点这个链接安装（油猴会弹出安装页，点【安装】就行）：
+   <https://raw.githubusercontent.com/quiter1/zufe-live-restore/main/zufe-live-restore.user.js>
+   - 已经装过旧版，再点同一个链接 → 油猴显示的是【更新】，**原地覆盖**，不会出现两个版本，也不用手动删除
 4. 打开直播间页面，例如：
    ```
    https://psp-zelda.chaoxing.com/vri-zelda/index?speechid=…&enc=…
    ```
+
+> 不用再「下载文件 → 拖进浏览器」了：脚本头部写了 `@downloadURL`，装过一次之后，油猴会自己去 GitHub 取最新版本。
+
+## 更新（之后都不用手动重装）
+
+- 油猴默认**每 24 小时**检查一次；发现 `@version` 变大就会自动下载并在下次打开页面时生效，不会让你删旧版。
+- 想更快：油猴面板 → 设置 → 「检查更新」→ 改成**每小时**。
+- 页面右下角如果冒出 `发现新版本 vX.Y.Z，点这里更新`，点一下 → 油猴弹【更新】→ 再点一下即可。
+- **还在用 0.4.0 及更早版本的同学**：那几版头部没有 `@downloadURL`，油猴没法自动更新，需要手动点一次上面第 3 步的链接；**这一次之后**也会变成自动更新。
 
 ## 使用
 
@@ -45,8 +54,11 @@
 
 ## 更新记录
 
-- **v0.3.0**（当前）：第二路「电脑桌面」所在容器不可见/不存在时，自动开一个**可拖动、可缩放**的悬浮窗；容器判定优先取页面自带 `video/canvas` 的父节点；播放成功时日志会打出真实分辨率；暴露 `window.__zufe` 便于排查
-- v0.2.0：画面跟随容器缩放（`ResizeObserver` + `window.resize`）；`?zufe_debug=1` 描框不再依赖登录态
+- **v0.4.2**（当前）：更新地址从 jsDelivr 换成 `raw.githubusercontent.com`，避开 CDN 最长 12 小时的缓存（以前推了新版本，油猴可能几小时内都查不到）；右下角新增「发现新版本」提示；`@version` 与代码里的 `VERSION` 由 GitHub Actions 校验一致
+- v0.4.1：补上 `@updateURL` / `@downloadURL`，油猴可自动更新
+- v0.4.0：页面内悬浮控制条，按钮在「现场画面 / 电脑桌面」之间切换
+- v0.3.0：第二路「电脑桌面」不可见时自动开可拖动悬浮窗；描框不再依赖登录态；暴露 `window.__zufe`
+- v0.2.0：画面跟随容器缩放（`ResizeObserver` + `window.resize`）；`?zufe_debug=1` 描框
 - v0.1.0：初版
 
 ## 已知限制
@@ -55,6 +67,15 @@
 - **CORS**：流地址在 `live.zufe.edu.cn`，跨域拉流需要对方允许。若控制台出现 `Failed to fetch`，需改用 `GM_xmlhttpRequest` 版本。
 - **容器定位**：优先用现有 `video/canvas` 的父容器，其次按 class / 面积启发式取两块最大区域；第二块不可见时自动改用悬浮窗。定位不准时用 `?zufe_debug=1` 看描框。
 - 依赖 `cdn.jsdelivr.net` 上的 mpegts.js（脚本里 `@require`）。
+
+## 维护者：怎么发新版本
+
+1. 改脚本后，把头部 `@version` 和代码里的 `const VERSION` **同时**改成新版本号（两处不一致，CI 会直接失败）；
+2. `git commit` + `git push` 到 `main`；
+3. `.github/workflows/release.yml` 会自动打 tag `vX.Y.Z`、建一个 GitHub Release，并把 `.user.js` 作为附件传上去；
+4. 用户侧：油猴下次检查（默认 24 小时内）自动更新；页面上的更新提示最多 12 小时后出现（每台机器 12 小时只查一次）。
+
+**你只需要 push 代码，不用再让任何人下载文件。**
 
 ## 免责声明
 

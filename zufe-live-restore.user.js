@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         智播课堂 · 强制显示直播真实画面
 // @namespace    zufe.live.restore
-// @version      0.4.1
+// @version      0.4.2
 // @description  页面写「直播已结束」也能放真实直播流；画面里带一条悬浮控制条，按钮在「现场画面 / 电脑桌面」之间切换，也可以把另一路单独开成浮窗
 // @author       quiter1
 // @match        https://psp-zelda.chaoxing.com/vri-zelda/*
 // @require      https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js
-// @updateURL    https://cdn.jsdelivr.net/gh/quiter1/zufe-live-restore@latest/zufe-live-restore.user.js
-// @downloadURL  https://cdn.jsdelivr.net/gh/quiter1/zufe-live-restore@latest/zufe-live-restore.user.js
+// @updateURL    https://raw.githubusercontent.com/quiter1/zufe-live-restore/main/zufe-live-restore.user.js
+// @downloadURL  https://raw.githubusercontent.com/quiter1/zufe-live-restore/main/zufe-live-restore.user.js
 // @supportURL   https://github.com/quiter1/zufe-live-restore/issues
 // @homepageURL  https://github.com/quiter1/zufe-live-restore
 // @grant        none
@@ -24,6 +24,58 @@
 
     const Z = window.__zufe = { streams: {}, view: null, main: null, pip: null, last: '' };
     const VIEW_NAME = { main: '现场画面', ppt: '电脑桌面' };
+
+    // ---------------------------------------------------------------- 版本与更新提示
+    // 油猴自己会按 @updateURL 定时检查并「原地升级」，不需要用户先删掉旧版再装新版。
+    // 这里额外补一个提示：万一把油猴的自动检查关了、或检查间隔太长，也能看到有新版本。
+    // 注意：改版本号时，头部 @version 和这里的 VERSION 必须一致（GitHub Actions 会校验）。
+    const VERSION = '0.4.2';
+    const INSTALL_URL = 'https://raw.githubusercontent.com/quiter1/zufe-live-restore/main/zufe-live-restore.user.js';
+    const UPDATE_CHECK_TTL = 12 * 3600 * 1000;
+
+    function verParts(v) {
+        return String(v || '').split('.').map(n => parseInt(n, 10) || 0);
+    }
+
+    function isNewer(remote, local) {
+        const a = verParts(remote), b = verParts(local);
+        for (let i = 0; i < Math.max(a.length, b.length); i++) {
+            const d = (a[i] || 0) - (b[i] || 0);
+            if (d) return d > 0;
+        }
+        return false;
+    }
+
+    function showUpdateTip(remote) {
+        if (document.getElementById('zufe-update')) return;
+        const tip = document.createElement('div');
+        tip.id = 'zufe-update';
+        tip.textContent = '发现新版本 v' + remote + '（当前 v' + VERSION + '），点这里更新';
+        tip.title = '油猴会原地升级，不用先删除旧版本';
+        tip.style.cssText = [
+            'position:fixed', 'right:16px', 'bottom:16px', 'z-index:2147483647',
+            'background:#2f6fed', 'color:#fff', 'padding:8px 14px', 'border-radius:8px',
+            'font:13px "Microsoft YaHei",sans-serif', 'cursor:pointer',
+            'box-shadow:0 8px 24px #0007',
+        ].join(';');
+        tip.onclick = () => window.open(INSTALL_URL, '_blank');
+        document.body.appendChild(tip);
+    }
+
+    async function checkUpdate() {
+        try {
+            const key = 'zufe_update_checked_at';
+            const last = Number(localStorage.getItem(key) || 0);
+            if (Date.now() - last < UPDATE_CHECK_TTL) return;
+            localStorage.setItem(key, String(Date.now()));
+            const res = await fetch(INSTALL_URL, { cache: 'no-store' });
+            if (!res.ok) return;
+            const m = /@version\s+([0-9][0-9A-Za-z.\-]*)/.exec(await res.text());
+            if (m && isNewer(m[1], VERSION)) showUpdateTip(m[1]);
+        } catch (e) {
+            // 检查失败不影响播放，静默即可
+        }
+    }
 
     function say(text) {
         Z.last = text;
@@ -312,6 +364,7 @@
     }
 
     setTimeout(run, 1200);
+    setTimeout(checkUpdate, 4000);
     let lastUrl = location.href;
     setInterval(() => {
         if (location.href !== lastUrl) {

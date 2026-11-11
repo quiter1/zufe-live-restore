@@ -1,0 +1,2 @@
+# 统一用 LF：usercontent 直接读这个文件，CRLF 会让 CI 里的版本号解析和 tag 带出杂字符
+* text=auto eol=lf
