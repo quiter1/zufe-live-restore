@@ -43,11 +43,17 @@
 3. 脚本读 `args`（页面没有就重新 `fetch` 同页源码解析），用 [mpegts.js](https://github.com/xqq/mpegts.js) 把 HTTP-FLV 转成 MSE 播放。
 4. 把 `<video>` 绝对定位贴到原来的两个容器里（`inset: 0` + `ResizeObserver` + `window.resize`），遮挡掉「直播已结束」提示层。
 
+## 更新记录
+
+- **v0.3.0**（当前）：第二路「电脑桌面」所在容器不可见/不存在时，自动开一个**可拖动、可缩放**的悬浮窗；容器判定优先取页面自带 `video/canvas` 的父节点；播放成功时日志会打出真实分辨率；暴露 `window.__zufe` 便于排查
+- v0.2.0：画面跟随容器缩放（`ResizeObserver` + `window.resize`）；`?zufe_debug=1` 描框不再依赖登录态
+- v0.1.0：初版
+
 ## 已知限制
 
 - **需要登录**：没登录时服务端不会下发 `args`，脚本也无能为力（会在徽标上提示）。
 - **CORS**：流地址在 `live.zufe.edu.cn`，跨域拉流需要对方允许。若控制台出现 `Failed to fetch`，需改用 `GM_xmlhttpRequest` 版本。
-- **容器定位**：优先用现有 `<video>` 的父容器，其次按 class / 面积启发式取两块最大区域。定位不准时用 `?zufe_debug=1` 看描框，再调整选择器。
+- **容器定位**：优先用现有 `video/canvas` 的父容器，其次按 class / 面积启发式取两块最大区域；第二块不可见时自动改用悬浮窗。定位不准时用 `?zufe_debug=1` 看描框。
 - 依赖 `cdn.jsdelivr.net` 上的 mpegts.js（脚本里 `@require`）。
 
 ## 免责声明
