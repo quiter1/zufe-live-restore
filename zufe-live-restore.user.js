@@ -1,11 +1,15 @@
 // ==UserScript==
 // @name         智播课堂 · 强制显示直播真实画面
 // @namespace    zufe.live.restore
-// @version      0.4.0
+// @version      0.4.1
 // @description  页面写「直播已结束」也能放真实直播流；画面里带一条悬浮控制条，按钮在「现场画面 / 电脑桌面」之间切换，也可以把另一路单独开成浮窗
 // @author       quiter1
 // @match        https://psp-zelda.chaoxing.com/vri-zelda/*
 // @require      https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.js
+// @updateURL    https://cdn.jsdelivr.net/gh/quiter1/zufe-live-restore@latest/zufe-live-restore.user.js
+// @downloadURL  https://cdn.jsdelivr.net/gh/quiter1/zufe-live-restore@latest/zufe-live-restore.user.js
+// @supportURL   https://github.com/quiter1/zufe-live-restore/issues
+// @homepageURL  https://github.com/quiter1/zufe-live-restore
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
