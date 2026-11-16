@@ -715,6 +715,33 @@ def control_window(room, data, opts, player, kind):
     import ui_windows
     return ui_windows.control_window(room, data, opts, player, kind)
 
+def probe_stream(url, timeout=6):
+    """粗略探一下这个直播地址现在有没有数据：有画面=服务端立刻开始吐字节。"""
+    if not url:
+        return False
+    try:
+        import requests
+    except Exception:
+        requests = None
+    if requests is not None:
+        try:
+            r = requests.get(url, headers={'User-Agent': UA}, stream=True, timeout=timeout)
+            try:
+                if r.status_code not in (200, 206):
+                    return False
+                return bool(next(r.iter_content(256), b''))
+            finally:
+                r.close()
+        except Exception:
+            return False
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return bool(r.read(256))
+    except Exception:
+        return False
+
+
 def play(room, opts=None):
     opts = opts or {}
     room = str(room or '').strip().upper()
@@ -754,6 +781,11 @@ def play(room, opts=None):
             streams = {'main': data['main'], 'ppt': data.get('ppt'),
                        'other': data.get('other')}
             course = data.get('course') or ''
+            if not probe_stream(streams.get('main')):
+                print(f'[!] 解析失败（{exc}）')
+                print('    上次缓存到的地址也放不出来了（直播地址会过期）。')
+                print('    这间教室现在可能没在直播，或者需要重新登录一次。')
+                return 1
             print(f'  [!] 解析失败（{exc}），改用上次缓存到的地址')
         else:
             print(f'[!] {exc}')
@@ -768,6 +800,10 @@ def play(room, opts=None):
             print(f'  {label}：{streams[key]}')
     if opts.get('dry'):
         return 0
+    if not probe_stream(streams.get('main')):
+        print('[!] 这间教室现在没有画面：可能没在上课/没开直播，或者直播刚结束。')
+        print('    上课时间再试；如果确定在上课，点【浏览器登录】重新登一次再试。')
+        return 1
     vlc = find_vlc()
     if not vlc and not opts.get('no_install'):
         vlc = ensure_vlc(log=print)

@@ -24,6 +24,9 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -198,9 +201,14 @@ public class MainActivity extends Activity {
                 try {
                     final Streams s = Resolver.resolve(MainActivity.this, room, link);
                     Store.saveStream(MainActivity.this, room, s);
+                    final boolean ok = probe(s.main);
                     ui.post(() -> {
                         setBusy(false, null);
-                        openPlayer(room, s);
+                        if (ok) {
+                            openPlayer(room, s);
+                        } else {
+                            noPicture(room, s);
+                        }
                     });
                 } catch (Resolver.NeedLogin e) {
                     final String msg = e.getMessage() == null ? "需要登录" : e.getMessage();
@@ -233,15 +241,63 @@ public class MainActivity extends Activity {
         startActivity(i);
     }
 
+    private static boolean probe(String url) {
+        if (url == null || url.isEmpty()) return false;
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setRequestProperty("User-Agent", HttpHelper.UA);
+            c.setRequestProperty("Range", "bytes=0-1023");
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(8000);
+            c.setInstanceFollowRedirects(true);
+            int code = c.getResponseCode();
+            if (code != 200 && code != 206) return false;
+            InputStream in = c.getInputStream();
+            try {
+                return in.read() >= 0;
+            } finally {
+                in.close();
+            }
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private void noPicture(final String room, final Streams s) {
+        status.setText("这间教室现在没有画面");
+        status.setTextColor(Ui.WARN);
+        new AlertDialog.Builder(this)
+                .setTitle("这间教室现在没有画面")
+                .setMessage("地址是拿到了，但没有可播的画面：多半是这堂课没在上课、没开直播，或者直播刚结束；也可能是登录状态失效了。\n\n上课时间再试一次；如果确定在上课，点教室后在弹窗里选「去登录」重新登一次。")
+                .setPositiveButton("知道了", null)
+                .setNeutralButton("仍然打开", (d, w) -> openPlayer(room, s))
+                .show();
+    }
+
     private void failed(String room, String msg) {
         status.setText("没取到画面：" + msg);
         status.setTextColor(Ui.WARN);
-        Streams cache = Store.cachedStream(this, room);
+        boolean auth = msg != null && (msg.contains("密码") || msg.contains("账号") || msg.contains("登录"));
+        Streams cache = auth ? null : Store.cachedStream(this, room);
         if (cache != null) {
             new AlertDialog.Builder(this)
                     .setTitle("没取到画面")
                     .setMessage(msg + "\n\n这间教室上次取到过画面地址，要不要拿上次的再试一下？")
-                    .setPositiveButton("用上次的", (d, w) -> openPlayer(room, cache))
+                    .setPositiveButton("用上次的", (d, w) -> {
+                        new Thread(() -> {
+                            final boolean ok = probe(cache.main);
+                            ui.post(() -> {
+                                if (ok) {
+                                    openPlayer(room, cache);
+                                } else {
+                                    toast("上次的地址已经过期了（直播地址有时效），等上课再取一次");
+                                }
+                            });
+                        }, "probe-cache").start();
+                    })
                     .setNegativeButton("算了", null)
                     .show();
         } else {
