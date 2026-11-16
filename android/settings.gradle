@@ -1,0 +1,17 @@
+pluginManagement {
+    repositories {
+        maven { url 'https://dl.google.com/dl/android/maven2' }
+        mavenCentral()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        maven { url 'https://dl.google.com/dl/android/maven2' }
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'LiveView'
+include ':app'
