@@ -7,6 +7,7 @@ import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.view.TextureView;
 import android.os.Build;
+import android.app.AlertDialog;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -79,6 +80,7 @@ public class PlayerActivity extends Activity {
     private boolean subOn = true;
     private boolean panelOn;
     private int retries;
+    private boolean failShown;
     private boolean stoppedOnce;
     private int shownSegs;
     private int videoW;
@@ -436,8 +438,24 @@ public class PlayerActivity extends Activity {
                 ui.postDelayed(() -> play(showingPpt), 1500L * retries);
             } else {
                 hint.setText("播放失败：" + text + "\n点「重连」再来一次");
+                showFailDialog(text);
             }
         });
+    }
+
+    private void showFailDialog(String text) {
+        if (isFinishing() || failShown) return;
+        failShown = true;
+        new AlertDialog.Builder(this)
+                .setTitle("打不开这路画面")
+                .setMessage("原因：" + text + "\n\n多半是这间教室现在没在直播（上课时间才有），\n或者登录状态失效了。")
+                .setPositiveButton("重试", (d, w) -> {
+                    failShown = false;
+                    retries = 0;
+                    play(true);
+                })
+                .setNegativeButton("返回列表", (d, w) -> finish())
+                .show();
     }
 
     // ---------- 实时字幕 ----------
