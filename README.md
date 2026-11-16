@@ -10,11 +10,22 @@
 
 三个都一样：**页面显示「直播已结束」时，仍然把真实的直播画面放出来**，而且带声音。
 
-![电脑端](screenshots/desktop.jpg)
+![电脑端](screenshots/desktop.png)
 
 ---
 
-## 本次更新（v0.5.0 · 首次带电脑端和手机端）
+## 本次更新（v0.5.1 · 画面内嵌，字幕不再飘）
+
+- **画面搬进了程序自己的窗口**：电脑端改用 `libvlc`（python-vlc 绑定）把视频直接画在 tkinter 窗口里，
+  不再弹单独的 VLC 窗口，也没有 VLC 的菜单栏、工具栏、皮肤。**字幕就是同一个窗口里的一个标签**，
+  贴在画面下边缘居中——不再是一个置顶的小窗，也就不会再"飘"在别的窗口上面、不会挡住点击。
+- 字幕按**画面实际矩形**定位（读 `video_get_size` 算等比内接后的黑边），宽窗口窄窗口都贴得住。
+- 底部工具条：`课堂画面 / 电脑桌面 / 重连 / 关闭画面` ＋ `字幕` 开关 ＋ 音量滑块（带百分比）。
+- 断流自动重连（最多 3 次），仍不行提示点【重连】。
+- 自带 `vlc.py`（python-vlc 3.0.10114，修了 Python 3.11+ 删掉 `inspect.getargspec` 的兼容问题），
+  不用 pip 装依赖；找不到系统 VLC 时会退回外部 VLC 窗口并在画面区提示。
+
+## v0.5.0 · 首次带电脑端和手机端
 
 这一版把「只能看画面」补成了「看得见、也听得懂」：
 
@@ -62,7 +73,8 @@
 1. 下载整个 [`desktop/`](desktop/) 文件夹，和 `runtime\python`、`vlc\` 一起放（**直接用桌面那个完整文件夹打包发给别人最简单**）。
 2. 双击 `智播课堂Live.bat`（旧的 `看直播.bat` 也能用）。
 3. 第一次点教室会提示登录：要么在自动弹出的 Edge 里扫码/输密码，要么先在【账号设置】里填一次超星账号密码。
-4. 第一次播放会自动下载 VLC（约 79 MB，官方源失败换清华镜像，校验 SHA256）。
+4. 画面是内嵌的：程序会先找系统里装好的 64 位 VLC 取 `libvlc.dll`；没有就自动下载一份
+   （约 79 MB，官方源失败换清华镜像，校验 SHA256 后解压到 `vlc\`）。
 
 取流顺序：`browser-profile` 里的登录态 → 账号密码 → 弹浏览器登录。
 
@@ -74,9 +86,11 @@
 desktop/
   智播课堂Live.bat   启动入口
   watch_live.py      取流 + 登录 + 播放器调度
-  ui_windows.py      界面：选教室窗口 / 播放窗口 / 底部字幕条
+  ui_windows.py      界面：选教室窗口 / 播放窗口（画面+字幕同窗）
   ui_kit.py          浅色主题控件（卡片、按钮、开关、滚动列表）
   subtitles.py       AI 转写客户端（轮询 live-ts）
+  player_embed.py    libvlc 封装：把画面嵌进本程序窗口
+  vlc.py             python-vlc（已修 Python 3.13 兼容）
   cdp_min.py         极小 WebSocket/CDP 客户端（浏览器登录用）
   使用说明.txt
 ```
@@ -105,14 +119,16 @@ desktop/
 2. 「直播已结束」只是前端根据 `args.speech.settings` 里的时间窗（`starttimestamp/endtimestamp`）做的判断，**服务端下发的流地址本身是好的**。
 3. 三种形式都做同一件事：拿到 `args` → 取 `realHttp`（HTTP-FLV）→ 播放。
    - 插件：`mpegts.js` 转 MSE，`<video>` 贴回原来的两个容器。
-   - 电脑端：直接交给 VLC（`--network-caching=600 --no-video-on-top`）。
+   - 电脑端：`libvlc` 的 `set_hwnd` 把画面画进我们窗口里的一个 Frame，字幕是同窗口的标签；
+     不开外部播放器窗口，所以不存在"字幕浮在外面"这回事。
    - 手机端：Media3 ExoPlayer 播 FLV，`TextureView` 渲染。
 4. 转写：`/vri-zelda/api/live-ts?live_url=<main.realHttp>&enc=<main.urlEnc>&offset_id=&start_time=&fid=&speechid=`，返回
    `{start_time, offset_id, transcripts:[{id,start,end,text}], last_mid_text:{text}}`——`transcripts` 是增量句子，`last_mid_text` 是正在说的半句。
 
 ## 更新记录
 
-- **v0.5.0**（当前）：新增电脑端与手机端两种形式；实时字幕条 + 右侧全文转写（带时间）+ 开关；整体改浅色主题；改名「智播课堂 Live」；手机端换 TextureView 修叠加层遮挡
+- **v0.5.1**（当前）：电脑端画面改为内嵌 `libvlc`（python-vlc），不再开单独 VLC 窗口；字幕条与转写面板同窗口，按画面实际矩形定位；底部工具条加音量滑块与字幕开关；断流自动重连
+- **v0.5.0**：新增电脑端与手机端两种形式；实时字幕条 + 右侧全文转写（带时间）+ 开关；整体改浅色主题；改名「智播课堂 Live」；手机端换 TextureView 修叠加层遮挡
 - **v0.4.2**：更新地址从 jsDelivr 换成 `raw.githubusercontent.com`，避开 CDN 最长 12 小时的缓存；右下角新增「发现新版本」提示；`@version` 与代码里的 `VERSION` 由 GitHub Actions 校验一致
 - v0.4.1：补上 `@updateURL` / `@downloadURL`，油猴可自动更新
 - v0.4.0：页面内悬浮控制条，按钮在「现场画面 / 电脑桌面」之间切换
@@ -123,6 +139,7 @@ desktop/
 ## 常见问题
 
 - **没画面**：先在浏览器里登录超星，能正常打开直播页再说；没登录时服务端不下发 `args`。
+- **电脑端提示「没找到 libvlc」**：装个 64 位 VLC，或删掉程序目录里的 `vlc\` 让它重新下载。
 - **字幕一直是「等待说话…」**：这堂课学校没开 AI 转写，或老师还没开口；网页版同时也没有。
 - **字幕比声音慢十几秒**：学校端先识别再下发，正常。
 - **手机端切「电脑桌面」黑屏**：有的教室没开那一路，切回「课堂画面」即可。
