@@ -47,28 +47,29 @@ _BREAK_BEFORE = '（《「『([{'
 
 def cjk_wrap(text, max_chars):
     """中文按字数折行（tk 的 wraplength 只认空格，中文整段不换行）。"""
-    text = (text or '').strip()
+    text = (text or "").strip()
     limit = max(4, int(max_chars))
     if len(text) <= limit:
         return text
-    lines, buf, count = [], [], 0
+    lines, buf = [], []
     for ch in text:
+        if ch == "\n":
+            lines.append("".join(buf).strip())
+            buf = []
+            continue
         buf.append(ch)
-        count += 1
-        if count >= limit:
-            if ch in _BREAK_AFTER or (len(buf) > 1 and buf[-2] in _BREAK_AFTER):
-                lines.append(''.join(buf))
-                buf, count = [], 0
-            elif ch.isspace() or ch == '\n':
-                lines.append(''.join(buf).strip())
-                buf, count = [], 0
-            elif len(buf) >= limit + 8:
-                lines.append(''.join(buf))
-                buf, count = [], 0
-    tail = ''.join(buf).strip()
+        if len(buf) >= limit:
+            cut = len(buf)
+            for k in range(len(buf) - 1, max(limit - 6, 0) - 1, -1):
+                if buf[k] in _BREAK_AFTER or buf[k].isspace():
+                    cut = k + 1
+                    break
+            lines.append("".join(buf[:cut]).strip())
+            buf = buf[cut:]
+    tail = "".join(buf).strip()
     if tail:
         lines.append(tail)
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def font(size, bold=False, family='ui'):

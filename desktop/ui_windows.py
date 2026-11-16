@@ -2,7 +2,7 @@
 
 - show_picker：选教室（搜索、卡片、添加/删除、账号设置）
 - control_window：播放窗口（左边切画面，右边实时字幕 + 全部转写，底部字幕开关）
-- 字幕条：浮在视频画面底部的无边框窗口，跟着播放器窗口走
+- 画面：内嵌 libVLC（player_embed.py），字幕直接画在同一窗口里，不飘在外面
 """
 
 import queue
@@ -441,6 +441,8 @@ class SubtitleBar:
 
 
 # ---------------------------------------------------------------- 播放窗口
+
+
 def control_window(room, data, opts, player, kind):
     W = _watch()
     streams = {'main': data.get('main'), 'ppt': data.get('ppt')}
@@ -453,28 +455,36 @@ def control_window(room, data, opts, player, kind):
     want = str(opts.get('view') or '').lower()
     start_view = want if want in names else views[0][0]
 
+    try:
+        import player_embed as P
+    except Exception:  # noqa: BLE001
+        P = None
+    embed_ok = bool(P and P.available(player))
+
     root = tk.Tk()
     root.title(f'{PRODUCT} · {room}')
     root.configure(bg=U.BG)
     sw, sh = U.screen_size()
-    win_w = min(860, max(640, int(sw * 0.34)))
-    win_h = max(560, sh - 60)
-    root.geometry(f'{win_w}x{win_h}+{sw - win_w - 16}+6')
-    root.minsize(min(600, win_w), min(520, win_h))
+    win_w = min(1220, max(1000, int(sw * 0.64)))
+    win_h = min(820, max(600, sh - 120))
+    root.geometry(f'{win_w}x{win_h}+{max(0, (sw - win_w) // 2)}+{max(0, (sh - win_h) // 2 - 24)}')
+    root.minsize(1000, 560)
     U.apply_dark_titlebar(root)
 
-    state = {'proc': None, 'view': None, 'sub_on': True, 'count': 0, 'arranged': False}
+    state = {'view': None, 'sub_on': True, 'count': 0, 'player': None, 'proc': None,
+             'retry': 0, 'vol': 0 if opts.get('mute') else int(opts.get('vol') or 100)}
     q = queue.Queue()
 
     outer = tk.Frame(root, bg=U.BG)
-    outer.pack(fill='both', expand=True, padx=18, pady=14)
+    outer.pack(fill='both', expand=True, padx=16, pady=12)
 
-    # ---- 头部
+    # ---------------- 头部
     head = tk.Frame(outer, bg=U.BG)
     head.pack(fill='x')
     left_head = tk.Frame(head, bg=U.BG)
     left_head.pack(side='left', fill='x', expand=True)
-    tk.Label(left_head, text=room, bg=U.BG, fg=U.TEXT, font=U.font(22, True, 'mono')).pack(anchor='w')
+    tk.Label(left_head, text=room, bg=U.BG, fg=U.TEXT,
+             font=U.font(22, True, 'mono')).pack(anchor='w')
     tk.Label(left_head, text=course or '直播间', bg=U.BG, fg=U.DIM,
              font=U.font(10)).pack(anchor='w', pady=(2, 0))
     pill = tk.Label(head, text='● 直播中', bg=U.SOFT_OK, fg=U.OK, font=U.font(10, True),
@@ -482,24 +492,74 @@ def control_window(room, data, opts, player, kind):
     pill.pack(side='right')
 
     body = tk.Frame(outer, bg=U.BG)
-    body.pack(fill='both', expand=True, pady=(14, 0))
+    body.pack(fill='both', expand=True, pady=(12, 0))
 
-    # ---- 左：画面控制
-    left = U.Card(body)
-    left.pack(side='left', fill='y')
-    left.configure(width=252)
-    left.pack_propagate(False)
-    left_in = tk.Frame(left, bg=U.CARD)
-    left_in.pack(fill='both', expand=True, padx=16, pady=16)
-    tk.Label(left_in, text='画面', bg=U.CARD, fg=U.TEXT, font=U.font(12, True)).pack(anchor='w')
-    tk.Label(left_in, text='视频在播放器窗口里，\n这里切换看哪一路。', bg=U.CARD, fg=U.FAINT,
-             font=U.font(9), justify='left', anchor='w').pack(anchor='w', pady=(4, 14))
+    # ---------------- 左：画面（libVLC 直接嵌在这里）
+    stage = tk.Frame(body, bg='#000000')
+    stage.pack(side='left', fill='both', expand=True)
+    video_holder = tk.Frame(stage, bg='#000000')
+    video_holder.pack(fill='both', expand=True)
+    sub_label = tk.Label(stage, text='', bg='#0B1220', fg='#FFFFFF',
+                         font=U.font(16, True), padx=18, pady=9,
+                         wraplength=600, justify='center', bd=0)
+    stage_hint = tk.Label(stage, text='正在连接画面…', bg='#000000', fg='#64748B',
+                          font=U.font(12))
+    stage_hint.place(relx=0.5, rely=0.5, anchor='center')
+
+    # ---------------- 右：字幕 + 转写
+    right = tk.Frame(body, bg=U.BG, width=344)
+    right.pack(side='right', fill='y', padx=(12, 0))
+    right.pack_propagate(False)
+
+    now_card = U.Card(right)
+    now_card.pack(fill='x')
+    now_in = tk.Frame(now_card, bg=U.CARD)
+    now_in.pack(fill='x', padx=14, pady=12)
+    top_row = tk.Frame(now_in, bg=U.CARD)
+    top_row.pack(fill='x')
+    tk.Label(top_row, text='实时字幕', bg=U.CARD, fg=U.DIM, font=U.font(10)).pack(side='left')
+    sub_state = tk.Label(top_row, text='等待识别…', bg=U.CARD, fg=U.FAINT, font=U.font(9))
+    sub_state.pack(side='right')
+    now_label = tk.Label(now_in, text='（还没识别到说话）', bg=U.CARD, fg=U.TEXT,
+                         font=U.font(16, True), anchor='w', justify='left')
+    now_label.pack(anchor='w', fill='x', pady=(8, 0))
+    now_chars = {'n': max(8, int((344 - 60) / 21))}
+
+    def set_now(text):
+        text = (text or '').strip()
+        if not text:
+            now_label.configure(text='（还没识别到说话）', fg=U.FAINT)
+            return
+        now_label.configure(text=U.cjk_wrap(text, now_chars['n']), fg=U.TEXT)
+
+    all_card = U.Card(right)
+    all_card.pack(fill='both', expand=True, pady=(12, 0))
+    all_head = tk.Frame(all_card, bg=U.CARD)
+    all_head.pack(fill='x', padx=14, pady=(12, 6))
+    tk.Label(all_head, text='全部说过的话', bg=U.CARD, fg=U.TEXT,
+             font=U.font(12, True)).pack(side='left')
+    tk.Label(all_head, text='带时间', bg=U.CARD, fg=U.FAINT,
+             font=U.font(9, False, 'latin')).pack(side='left', padx=(8, 0))
+    count_label = tk.Label(all_head, text='0 段', bg=U.CARD, fg=U.FAINT,
+                           font=U.font(9, False, 'mono'))
+    count_label.pack(side='right')
+    text_box = U.TextBox(all_card, size=11)
+    text_box.pack(fill='both', expand=True, padx=10, pady=(0, 10))
+
+    # ---------------- 底部工具条
+    foot = tk.Frame(outer, bg=U.BG)
+    foot.pack(fill='x', pady=(10, 0))
+
+    foot_left = tk.Frame(foot, bg=U.BG)
+    foot_left.pack(side='left')
+    foot_right = tk.Frame(foot, bg=U.BG)
+    foot_right.pack(side='right')
 
     view_btns = {}
 
     def seg_button(parent, text, action):
         lbl = tk.Label(parent, text=text, bg=U.CARD_HI, fg=U.TEXT, font=U.font(11, True),
-                       padx=14, pady=10, cursor='hand2', anchor='w')
+                       padx=16, pady=8, cursor='hand2')
         lbl._on = False
 
         def paint(color):
@@ -517,85 +577,94 @@ def control_window(room, data, opts, player, kind):
         for key, btn in view_btns.items():
             btn.set_on(state['view'] == key)
 
-    play_state = tk.Label(left_in, text='', bg=U.CARD, fg=U.DIM, font=U.font(9),
-                          justify='left', anchor='w', wraplength=212)
-    play_state.pack(anchor='w', pady=(16, 0))
+    for key, label in views:
+        btn = seg_button(foot_left, label, lambda k=key: launch(k))
+        btn.pack(side='left', padx=(0, 8))
+        view_btns[key] = btn
 
-    actions = tk.Frame(left_in, bg=U.CARD)
-    actions.pack(fill='x', side='bottom')
-    reload_btn = U.FlatButton(actions, '重新连接', command=lambda: (launch(state['view']), restart_subs()),
+    play_state = tk.Label(foot_left, text='', bg=U.BG, fg=U.DIM, font=U.font(9))
+    play_state.pack(side='left', padx=(6, 0))
+
+    tk.Label(foot_right, text='字幕', bg=U.BG, fg=U.TEXT,
+             font=U.font(10, True)).pack(side='left', padx=(0, 6))
+    toggle = U.Toggle(foot_right, value=True, command=lambda v: on_toggle_sub(v), bg=U.BG)
+    toggle.pack(side='left')
+    tk.Label(foot_right, text='音量', bg=U.BG, fg=U.DIM,
+             font=U.font(9)).pack(side='left', padx=(16, 6))
+    vol_pct = tk.Label(foot_right, text=f"{state['vol']}%", bg=U.BG, fg=U.DIM,
+                       font=U.font(9, False, 'mono'), width=4, anchor='e')
+    vol_pct.pack(side='left', padx=(0, 6))
+    vol_scale = tk.Scale(foot_right, from_=0, to=100, orient='horizontal', showvalue=False,
+                         length=76, width=10, bg='#FFFFFF', fg=U.DIM,
+                         troughcolor='#C7D2E0', highlightthickness=0, bd=1,
+                         relief='flat', sliderrelief='flat', sliderlength=20,
+                         activebackground=U.ACCENT, command=lambda v: on_volume(v))
+    vol_scale.set(state['vol'])
+    vol_scale.pack(side='left')
+
+    reload_btn = U.FlatButton(foot_left, '重连', command=lambda: (launch(state['view']), restart_subs()),
                               kind='ghost')
-    reload_btn.pack(fill='x', pady=(0, 8))
-    close_btn = U.FlatButton(actions, '关闭画面', command=lambda: stop_current(), kind='ghost')
-    close_btn.pack(fill='x')
-    aid = tk.Label(left_in, text=f'播放器：{"VLC" if kind == "vlc" else "ffplay"}',
-                   bg=U.CARD, fg=U.FAINT, font=U.font(9), anchor='w', justify='left')
-    aid.pack(anchor='w', pady=(10, 0))
+    reload_btn.pack(side='left', padx=(6, 8))
+    close_btn = U.FlatButton(foot_left, '关闭画面', command=lambda: stop_current(), kind='ghost')
+    close_btn.pack(side='left', padx=(0, 8))
 
-    # ---- 右：字幕 + 转写
-    right = tk.Frame(body, bg=U.BG)
-    right.pack(side='left', fill='both', expand=True, padx=(14, 0))
-    right.pack_propagate(False)
-
-    now_card = U.Card(right)
-    now_card.pack(fill='x')
-    now_in = tk.Frame(now_card, bg=U.CARD)
-    now_in.pack(fill='x', padx=16, pady=13)
-    top_row = tk.Frame(now_in, bg=U.CARD)
-    top_row.pack(fill='x')
-    tk.Label(top_row, text='实时字幕', bg=U.CARD, fg=U.DIM, font=U.font(10)).pack(side='left')
-    sub_state = tk.Label(top_row, text='等待识别…', bg=U.CARD, fg=U.FAINT, font=U.font(9))
-    sub_state.pack(side='right')
-    now_label = tk.Label(now_in, text='（还没识别到说话）', bg=U.CARD, fg=U.TEXT,
-                         font=U.font(17, True), anchor='w', justify='left')
-    now_label.pack(anchor='w', fill='x', pady=(8, 0))
-    now_chars = {'n': max(9, int((win_w - 348) / 25))}
-
-    def set_now(text):
-        text = (text or '').strip()
-        if not text:
-            now_label.configure(text='（还没识别到说话）', fg=U.FAINT)
+    # ---------------- 字幕条（窗口内，跟着画面走）
+    def place_sub():
+        if not state['sub_on'] or not (sub_label.cget('text') or '').strip():
+            sub_label.place_forget()
             return
-        now_label.configure(text=U.cjk_wrap(text, now_chars['n']), fg=U.TEXT)
+        w = video_holder.winfo_width() or win_w
+        h = video_holder.winfo_height() or win_h
+        # 画面在窗体里是等比内接的（libvlc 会留黑边），字幕条要贴住「画面」而不是「窗体」
+        vw = vh = 0
+        pl = state['player']
+        if pl is not None and hasattr(pl, 'video_size'):
+            vw, vh = pl.video_size()
+        if vw > 0 and vh > 0:
+            scale = min(w / float(vw), h / float(vh))
+            cw, ch = int(vw * scale), int(vh * scale)
+        else:
+            cw, ch = w, h
+        left = (w - cw) // 2
+        bottom = (h - ch) // 2 + ch
+        size = max(13, min(30, int(cw / 36)))
+        bw = max(int(cw * 0.86), int(cw * 0.3))
+        pad = max(10, int(ch * 0.04))
+        sub_label.configure(font=U.font(size, True), wraplength=int(bw * 0.92),
+                            padx=max(12, int(size * 0.9)), pady=max(6, int(size * 0.45)))
+        sub_label.place(x=left + cw // 2, y=bottom - pad, width=bw, anchor='s')
 
-    all_card = U.Card(right)
-    all_card.pack(fill='both', expand=True, pady=(12, 0))
-    all_head = tk.Frame(all_card, bg=U.CARD)
-    all_head.pack(fill='x', padx=16, pady=(12, 6))
-    tk.Label(all_head, text='全部说过的话', bg=U.CARD, fg=U.TEXT,
-             font=U.font(12, True)).pack(side='left')
-    tk.Label(all_head, text='带时间 · 和网页端一样', bg=U.CARD, fg=U.FAINT,
-             font=U.font(9, False, 'latin')).pack(side='left', padx=(8, 0))
-    count_label = tk.Label(all_head, text='0 段', bg=U.CARD, fg=U.FAINT, font=U.font(9, False, 'mono'))
-    count_label.pack(side='right')
-    text_box = U.TextBox(all_card, size=11)
-    text_box.pack(fill='both', expand=True, padx=12, pady=(0, 12))
+    video_holder.bind('<Configure>', lambda e: place_sub())
 
-    # ---- 底部：字幕开关
-    foot = tk.Frame(outer, bg=U.BG)
-    foot.pack(fill='x', pady=(12, 0))
-    tk.Label(foot, text='字幕条', bg=U.BG, fg=U.TEXT, font=U.font(10, True)).pack(side='left')
-    sub_hint = tk.Label(foot, text='浮在视频画面底部', bg=U.BG, fg=U.FAINT, font=U.font(9))
-    status_foot = tk.Label(foot, text='', bg=U.BG, fg=U.DIM, font=U.font(9))
-    status_foot.pack(side='right')
-
-    bar = SubtitleBar(root)
-    toggle = U.Toggle(foot, value=True, command=lambda v: on_toggle_sub(v), bg=U.BG)
-    toggle.pack(side='left', padx=(10, 6))
-    sub_hint.pack(side='left')
+    def set_sub_text(text):
+        text = (text or '').strip()
+        if text == (sub_label.cget('text') or ''):
+            return
+        sub_label.configure(text=text)
+        place_sub()
 
     def on_toggle_sub(value):
         state['sub_on'] = bool(value)
-        sub_hint.configure(text='浮在视频画面底部' if value else '已关闭')
-        if not value:
-            bar.hide()
+        place_sub()
 
-    # ---- 播放控制
+    def on_volume(value):
+        state['vol'] = int(float(value))
+        vol_pct.configure(text=f"{state['vol']}%")
+        if state['player'] is not None:
+            state['player'].set_volume(state['vol'])
+
+    # ---------------- 播放
     def stop_current():
+        pl = state['player']
+        if pl is not None:
+            pl.close()
+        state['player'] = None
         proc, state['proc'] = state['proc'], None
-        W._stop_player(proc)
-        play_state.configure(text='画面已关闭')
-        pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
+        if proc is not None:
+            W._stop_player(proc)
+        if state['view']:
+            play_state.configure(text='画面已关闭')
+            pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
 
     def launch(view):
         url = streams.get(view)
@@ -603,51 +672,35 @@ def control_window(room, data, opts, player, kind):
             play_state.configure(text=f'{names.get(view, view)}：这一路没有画面')
             return
         stop_current()
-        title = f'{room} {names.get(view, "")}'.strip()
-        try:
-            state['proc'] = W._start_player(url, title, opts, player, kind)
-        except Exception as exc:
-            play_state.configure(text=f'启动播放器失败：{exc}')
-            return
+        state['retry'] = 0
         state['view'] = view
         refresh_views()
+        if embed_ok:
+            stage_hint.configure(text='正在连接画面…')
+            stage_hint.place(relx=0.5, rely=0.5, anchor='center')
+            pl = P.EmbeddedPlayer(video_holder, player, volume=state['vol'])
+            if not pl.ok:
+                play_state.configure(text=f'内嵌播放失败：{pl.err}')
+                stage_hint.configure(text=f'内嵌播放失败：{pl.err}')
+                return
+            state['player'] = pl
+            if not pl.play(url):
+                play_state.configure(text=f'播放失败：{pl.err}')
+                return
+        else:
+            stage_hint.configure(text='没找到 libvlc，已用外部 VLC 播放；字幕会显示在这块黑色区域里',
+                                 wraplength=max(280, video_holder.winfo_width() - 40))
+            stage_hint.place(relx=0.5, rely=0.5, anchor='center')
+            title = f'{room} {names.get(view, "")}'.strip()
+            try:
+                state['proc'] = W._start_player(url, title, opts, player, kind)
+            except Exception as exc:  # noqa: BLE001
+                play_state.configure(text=f'启动播放器失败：{exc}')
+                return
         play_state.configure(text=f'正在播放：{names[view]}')
         pill.configure(text='● 直播中', bg=U.SOFT_OK, fg=U.OK)
-        if not state['arranged']:
-            root.after(1600, arrange_video)
 
-    def arrange_video():
-        """把播放器窗口摆到左边，控制窗摆到右边，像网页那样并排看。"""
-        if state['arranged'] or not state['view']:
-            return
-        hwnd = U.find_window_hwnd(room, names.get(state['view'], '')) or U.find_window_hwnd(room)
-        if not hwnd:
-            root.after(900, arrange_video)
-            return
-        sw, sh = U.screen_size()
-        panel_w = win_w
-        video_w = max(600, sw - panel_w - 26)
-        video_h = int(video_w * 9 / 16) + 62
-        if video_h > sh - 30:
-            video_h = sh - 30
-            video_w = int((video_h - 62) * 16 / 9)
-        U.restore_window(hwnd)
-        U.move_window(hwnd, 0, 0, video_w, video_h)
-        state['video_rect'] = (0, 0, video_w, video_h)
-        state['arrange_left'] = 20
-        try:
-            root.update_idletasks()
-            root.lift()
-        except Exception:
-            pass
-        state['arranged'] = True
-
-    for key, label in views:
-        btn = seg_button(left_in, label, lambda k=key: launch(k))
-        btn.pack(fill='x', pady=(0, 8))
-        view_btns[key] = btn
-
-    # ---- 字幕客户端
+    # ---------------- 字幕客户端
     client = {'obj': None}
 
     def restart_subs():
@@ -658,13 +711,13 @@ def control_window(room, data, opts, player, kind):
         text_box.clear()
         count_label.configure(text='0 段')
         set_now('')
+        set_sub_text('')
         obj = LiveTranscripts(streams.get('main') or '', data.get('enc') or '',
                               data.get('fid') or 0, data.get('speechid') or 0,
                               referer=data.get('link') or '', on_update=lambda: q.put('t'))
         client['obj'] = obj
         if not obj.start():
             sub_state.configure(text='没有开 AI 转写')
-            status_foot.configure(text=obj.error or '字幕不可用')
             return
         sub_state.configure(text='连接中…')
 
@@ -679,66 +732,45 @@ def control_window(room, data, opts, player, kind):
             snap = obj.snapshot()
             new = snap['segments'][state['count']:]
             if new:
-                follow = True
                 for row in new:
-                    text_box.append(row['clock'], row['text'], follow=follow)
+                    text_box.append(row['clock'], row['text'], follow=True)
                 state['count'] = len(snap['segments'])
                 count_label.configure(text=f"{state['count']} 段")
             live_text = snap['mid_text'] or (snap['segments'][-1]['text'] if snap['segments'] else '')
             if live_text:
                 set_now(live_text)
-                bar.set_text(live_text)
+                set_sub_text(live_text)
             if snap['status'] == 'error':
                 sub_state.configure(text='连接异常')
-                status_foot.configure(text=snap['error'][:60])
             elif snap['status'] == 'live':
                 sub_state.configure(text='识别中')
             elif snap['status'] == 'waiting':
                 sub_state.configure(text='等待说话…')
-            status_foot.configure(
-                text=f"{'已识别' if state['count'] else '等待'} {state['count']} 段"
-                     + (f" · {names.get(state['view'], '')}" if state['view'] else ''))
         root.after(400, drain)
 
     def tick():
-        proc = state['proc']
-        if proc is not None and proc.poll() is not None:
-            state['proc'] = None
-            play_state.configure(text='画面窗口被关掉了，点「重新连接」再看')
-            pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
-        hwnd2 = U.find_window_hwnd(room, names.get(state['view'], '')) or U.find_window_hwnd(room)
-        if state.get('video_rect') and hwnd2:
-            cur = U.window_rect(hwnd2)
-            want = state['video_rect']
-            if cur and (abs(cur[0] - want[0]) > 8 or abs(cur[1] - want[1]) > 8
-                        or abs(cur[2] - want[2]) > 8 or abs(cur[3] - want[3]) > 8):
-                U.move_window(hwnd2, want[0], want[1], want[2], want[3])
-        if state['sub_on'] and state['view']:
-            rect = U.window_rect(hwnd2) if hwnd2 else None
-            if rect:
-                rect = (rect[0], rect[1], rect[0] + rect[2], rect[1] + rect[3])
-            if not rect:
-                rect = U.find_window_rect(room, names.get(state['view'], ''))
-                if not rect:
-                    rect = U.find_window_rect(room)
-            if rect:
-                l, t, r, b = rect
-                w, h = r - l, b - t
-                if w > 240 and h > 150:
-                    bar_h = max(42, min(78, int(w * 0.062)))
-                    size = max(13, min(30, int(w / 40)))
-                    maxw = int(w * 0.9)
-                    text = (bar.text or ' ').strip() or ' '
-                    tw = bar.measure(text, size) + int(size * 2.2)
-                    bw = max(int(w * 0.22), min(maxw, tw))
-                    bx = l + (w - bw) // 2
-                    by = b - int(bar_h * 1.35) - bar_h
-                    bar.show_at(bx, by, bw, bar_h, size)
-            else:
-                bar.hide()
-        elif not state['sub_on']:
-            bar.hide()
-        root.after(450, tick)
+        pl = state['player']
+        if pl is not None:
+            st = pl.state()
+            if st in ('Playing', 'Buffering', 'Opening'):
+                if stage_hint.winfo_ismapped():
+                    stage_hint.place_forget()
+                pill.configure(text='● 直播中', bg=U.SOFT_OK, fg=U.OK)
+            elif st in ('Error', 'Stopped', 'Ended'):
+                if state['view'] and state['retry'] < 3:
+                    state['retry'] += 1
+                    play_state.configure(text=f'断流了，正在重连（第 {state["retry"]} 次）…')
+                    root.after(1200, lambda v=state['view']: launch(v))
+                else:
+                    play_state.configure(text='画面断了，点「重连」再试')
+                    pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
+        else:
+            proc = state['proc']
+            if proc is not None and proc.poll() is not None:
+                state['proc'] = None
+                play_state.configure(text='画面窗口被关掉了，点「重连」再看')
+                pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
+        root.after(600, tick)
 
     def on_close():
         try:
@@ -749,17 +781,17 @@ def control_window(room, data, opts, player, kind):
             pass
         stop_current()
         try:
-            bar.top.destroy()
+            root.destroy()
         except Exception:
             pass
-        root.destroy()
 
     root.protocol('WM_DELETE_WINDOW', on_close)
     root.bind('<Escape>', lambda e: on_close())
 
-    launch(start_view)
-    restart_subs()
+    root.update_idletasks()
+    root.after(180, lambda: launch(start_view))
+    root.after(260, restart_subs)
     root.after(400, drain)
-    root.after(450, tick)
+    root.after(600, tick)
     root.mainloop()
     return 0
