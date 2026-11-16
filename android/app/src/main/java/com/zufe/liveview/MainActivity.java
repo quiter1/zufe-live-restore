@@ -360,7 +360,7 @@ public class MainActivity extends Activity {
         box.setOrientation(LinearLayout.VERTICAL);
         box.setPadding(dp(20), dp(6), dp(20), 0);
         TextView tip = Ui.text(this,
-                "填上超星手机号和密码，取画面时会自动登录（和电脑版 account.json 一样）。留空就只用浏览器里登录的状态。",
+                "填上超星手机号和密码，取画面时会自动登录。两个都留空＝清除账号，改用网页登录（点教室时会问你）。",
                 12, Ui.DIM, false);
         box.addView(tip);
         EditText user = input("手机号 / 工号", Store.user(this), false);
@@ -369,8 +369,19 @@ public class MainActivity extends Activity {
         user.setPadding(dp(4), top, dp(4), top);
         box.addView(user);
         box.addView(pass);
-        TextView ver = Ui.text(this, "智播课堂 Live 手机版 v1.1", 11, Ui.DIM, false);
-        ver.setPadding(0, dp(12), 0, 0);
+        TextView clearAcc = Ui.text(this, "清除已保存的账号密码", 13, Ui.ACCENT, false);
+        clearAcc.setPadding(0, dp(12), 0, dp(4));
+        clearAcc.setOnClickListener(v -> {
+            Store.setAccount(this, "", "");
+            user.setText("");
+            pass.setText("");
+            status.setText("账号已清除，下次点教室会用网页登录");
+            status.setTextColor(Ui.OK);
+        });
+        box.addView(clearAcc);
+
+        TextView ver = Ui.text(this, "智播课堂 Live 手机版 v1.2", 11, Ui.DIM, false);
+        ver.setPadding(0, dp(10), 0, 0);
         box.addView(ver);
 
         new AlertDialog.Builder(this)

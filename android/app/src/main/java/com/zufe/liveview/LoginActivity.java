@@ -151,6 +151,8 @@ public class LoginActivity extends Activity {
     private final Handler ui = new Handler(Looper.getMainLooper());
     private WebView web;
     private TextView status;
+    private boolean loaded;
+    private boolean retried;
     private TextView title;
     private String link = "";
     private String room = "";
@@ -234,12 +236,39 @@ public class LoginActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
 
         web.addJavascriptInterface(new Bridge(), "LiveBridge");
+        loaded = false;
+        retried = false;
         web.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                status.setText("正在打开登录页…（校园网慢的话要十几秒）");
+            }
+
+            @Override
             public void onPageFinished(WebView view, String url) {
+                loaded = true;
                 inject();
             }
+
+            @Override
+            public void onReceivedError(WebView view, android.webkit.WebResourceRequest request,
+                                        android.webkit.WebResourceError error) {
+                status.setText("页面没打开（网络问题），点右上「刷新」重试");
+            }
         });
+        ui.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                if (!loaded && !retried) {
+                    retried = true;
+                    status.setText("页面加载有点慢，正在自动重试…");
+                    web.reload();
+                    ui.postDelayed(this, 15000);
+                } else if (!loaded) {
+                    status.setText("还是没打开，点右上「刷新」再试，或检查网络");
+                }
+            }
+        }, 15000);
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,

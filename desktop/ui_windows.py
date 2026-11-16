@@ -262,21 +262,35 @@ def show_picker(opts):
         box.pack(fill='both', expand=True, padx=20, pady=16)
         tk.Label(box, text='填一次账号密码', bg=U.BG, fg=U.TEXT,
                  font=U.font(13, True)).pack(anchor='w')
-        tk.Label(box, text='填了就能静默登录，不用每次开浏览器；不填也没关系。',
-                 bg=U.BG, fg=U.FAINT, font=U.font(9)).pack(anchor='w', pady=(2, 14))
+        tk.Label(box, text='填了就能静默登录，不用每次开浏览器；两个都留空＝清除账号，改用浏览器登录。',
+                 bg=U.BG, fg=U.FAINT, font=U.font(9)).pack(anchor='w', pady=(2, 10))
         cur = W.load_account()
         user_var, _ = _field(box, '超星账号（手机号 / 学号）', cur.get('user', ''))
         pass_var, _ = _field(box, '密码', cur.get('password', ''), show='*')
 
         def save():
-            user, pwd = user_var.get().strip(), pass_var.get()
+            user, pwd = user_var.get().strip(), pass_var.get().strip()
+            if not user and not pwd:
+                W.clear_account()
+                btn_acc.set_text('账号设置')
+                top.destroy()
+                hint.configure(text='账号已清除，下次会用浏览器登录')
+                return
             if not user or not pwd:
-                messagebox.showwarning('没填完', '账号和密码都要填。', parent=top)
+                messagebox.showwarning('只填了一半', '要么两个都填，要么两个都留空（留空＝清除账号、改用浏览器登录）。',
+                                       parent=top)
                 return
             W.save_account(user, pwd)
             btn_acc.set_text('账号设置')
             top.destroy()
             hint.configure(text=f'账号已保存（{user}）')
+
+        def clear_account():
+            W.clear_account()
+            user_var.set('')
+            pass_var.set('')
+            hint.configure(text='账号已清除，下次会用浏览器登录')
+            top.destroy()
 
         def clear_login():
             try:
@@ -667,13 +681,14 @@ def control_window(room, data, opts, player, kind):
             play_state.configure(text='画面已关闭')
             pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
 
-    def launch(view):
+    def launch(view, reset=True):
         url = streams.get(view)
         if not url:
             play_state.configure(text=f'{names.get(view, view)}：这一路没有画面')
             return
         stop_current()
-        state['retry'] = 0
+        if reset:
+            state['retry'] = 0
         state['view'] = view
         refresh_views()
         if embed_ok:
@@ -761,7 +776,7 @@ def control_window(room, data, opts, player, kind):
                 if state['view'] and state['retry'] < 3:
                     state['retry'] += 1
                     play_state.configure(text=f'断流了，正在重连（第 {state["retry"]} 次）…')
-                    root.after(1200, lambda v=state['view']: launch(v))
+                    root.after(1500, lambda v=state['view']: launch(v, reset=False))
                 else:
                     play_state.configure(text='画面断了，点「重连」再试')
                     pill.configure(text='○ 已停', bg=U.SOFT_OFF, fg=U.DIM)
@@ -796,3 +811,18 @@ def control_window(room, data, opts, player, kind):
     root.after(600, tick)
     root.mainloop()
     return 0
+
+
+def ask_browser_login(reason=''):
+    """电脑端问一句：要不要打开浏览器自己登录。没有 GUI 时直接返回 True。"""
+    try:
+        import tkinter.messagebox as mb
+        root = tk._default_root
+        msg = (reason.strip() + '\n\n' if reason else '') + \
+            '要在浏览器里自己登录一次学习通吗？\n' \
+            '（登录完会自动关掉浏览器并开始播放）'
+        if root is not None:
+            return bool(mb.askyesno('需要登录学习通', msg, parent=root))
+        return bool(mb.askyesno('需要登录学习通', msg))
+    except Exception:
+        return True

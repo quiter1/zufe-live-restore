@@ -64,7 +64,9 @@ public final class Resolver {
                 throw new NeedLogin(e.getMessage() == null ? "用账号登录失败" : e.getMessage());
             }
         }
-        throw new NeedLogin("还没有登录超星，先登录一次");
+        throw new NeedLogin(Store.hasAccount(ctx)
+                ? "用保存的账号登录没成功，试试在下面手动登录一次"
+                : "还没有填账号密码，也没登录过，先手动登录一次");
     }
 
     public static String webviewCookie(String url) {

@@ -113,6 +113,16 @@ def save_account(user, password):
     save_json(ACCOUNT_FILE, {'user': user, 'password': password})
 
 
+def clear_account():
+    """删掉保存的账号密码（下次就走浏览器登录）。"""
+    try:
+        ACCOUNT_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        save_json(ACCOUNT_FILE, {'user': '', 'password': ''})
+
+
 LAST_ROOM_FILE = BASE / '.last_room.json'
 
 
@@ -463,6 +473,10 @@ def browser_login(url, room, log=print, timeout=600):
         _shutdown_browser(ws, log=log)
     return data
 
+class LoginFailed(RuntimeError):
+    """账号密码被服务器拒绝（不是网络问题，不该无脑重试）。"""
+
+
 def _resolve_by_password(link, room, log=print):
     """老办法：用账号密码走 passport 登录（有 account.json 时才会用）。"""
     import requests
@@ -490,7 +504,7 @@ def _resolve_by_password(link, room, log=print):
         except Exception:
             raise RuntimeError('登录接口返回异常：' + login.text[:120])
         if not result.get('status'):
-            raise RuntimeError(result.get('msg2') or result.get('mes') or '账号或密码不对')
+            raise LoginFailed(result.get('msg2') or result.get('mes') or '账号或密码不对')
         log('  登录成功')
         page = session.get(unquote(result.get('url') or link), timeout=25,
                            allow_redirects=True)
@@ -501,17 +515,21 @@ def _resolve_by_password(link, room, log=print):
     return data
 
 
-def resolve_stream(room, log=print):
+def resolve_stream(room, log=print, ask_login=None):
     """取直播流：先看浏览器有没有登录态，没有就弹浏览器让用户登录一次。
 
     顺序：① 已登录的浏览器 profile（无头读取，静默）→ ② 账号密码（如果你填过）
          → ③ 打开 Edge 让用户自己登录 → 关浏览器 → 再读。
+
+    ask_login：可选回调 ask_login(reason) -> bool，用来问用户「要不要打开浏览器登录」；
+    命令行模式下传 None，就直接走浏览器登录。
     """
     rooms = load_rooms()
     links = rooms.get(room) or []
     if not links:
         raise RuntimeError(f'教室 {room} 还没有直播间链接，先在界面上添加')
     link = links[0]
+    log('  正在取画面地址…（这一步通常几秒，遇到要登录时最多可能要一分钟，请稍等）')
 
     # ① 浏览器里已经登录过：直接取，不用任何输入
     try:
@@ -538,10 +556,22 @@ def resolve_stream(room, log=print):
             return data
         except NeedAccount:
             pass
+        except LoginFailed as exc:
+            log(f'  账号密码不对：{exc}')
+            if ask_login and not ask_login(str(exc)):
+                raise RuntimeError(f'账号密码不对（{exc}）。可以在「账号设置」里改，或改成浏览器登录。')
         except Exception as exc:
             log(f'  账号密码登录失败：{exc}')
+            if ask_login and not ask_login(str(exc)):
+                raise RuntimeError(f'用账号密码登录失败：{exc}')
 
-    # ③ 弹浏览器让用户自己登录：解析出画面地址才算成功，成功后才关浏览器
+    # ③ 没账密 / 账密不对 / 账密登录失败：问一句要不要开浏览器自己登录
+    if not (acc.get('user') and acc.get('password')):
+        log('  还没有保存账号密码')
+        if ask_login and not ask_login('还没有保存账号密码'):
+            raise RuntimeError('没有可用的登录方式：去「账号设置」填账号密码，或用「浏览器登录」。')
+
+    log('  正在打开浏览器，登录完成后会自动关掉（最多等 10 分钟）')
     data = browser_login(link, room, log)
     _cache_streams(room, data)
     return data
@@ -692,16 +722,30 @@ def play(room, opts=None):
         print('[!] 没有选择教室')
         return 1
     print(f'教室：{room}')
+    print('  加载中，请稍等…（第一次取画面要连学校服务器，一般几秒到半分钟；需要登录时会弹浏览器）')
     streams, course, data = {}, '', {}
+    ask = None
     try:
-        data = resolve_stream(room, log=print)
+        import ui_windows as _uw
+        ask = _uw.ask_browser_login
+    except Exception:
+        ask = None
+    try:
+        data = resolve_stream(room, log=print, ask_login=ask)
         streams = {'main': data.get('main'), 'ppt': data.get('ppt'),
                    'other': data.get('other')}
         course = data.get('course') or ''
     except NeedAccount:
         print('[!] 需要登录：请在弹出的浏览器里登录一次，或点【浏览器登录】')
         return 2
+    except LoginFailed as exc:
+        print(f'[!] 账号密码不对：{exc}')
+        print('    到「账号设置」里改密码，或者两个都留空（清除账号）改用浏览器登录。')
+        return 1
     except Exception as exc:
+        if '账号密码' in str(exc) or '登录' in str(exc):
+            print(f'[!] {exc}')
+            return 1
         cached = load_json(CACHE_FILE, {})
         if str(cached.get('room', '')).upper() == room and (cached.get('main') or cached.get('url')):
             data = dict(cached)
@@ -712,7 +756,8 @@ def play(room, opts=None):
             course = data.get('course') or ''
             print(f'  [!] 解析失败（{exc}），改用上次缓存到的地址')
         else:
-            print(f'[!] 解析失败：{exc}')
+            print(f'[!] {exc}')
+            print('    可以先点【浏览器登录】自己登一次，或者到「账号设置」里填账号密码。')
             return 1
     links = load_rooms().get(room) or []
     data['link'] = links[0] if links else ''
