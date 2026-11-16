@@ -10,7 +10,7 @@
 
 三个都一样：**页面显示「直播已结束」时，仍然把真实的直播画面放出来**，而且带声音。
 
-![电脑端](screenshots/desktop.png)
+![电脑端](screenshots/desktop.jpg)
 
 ---
 
