@@ -815,14 +815,28 @@ def control_window(room, data, opts, player, kind):
 
 def ask_browser_login(reason=''):
     """电脑端问一句：要不要打开浏览器自己登录。没有 GUI 时直接返回 True。"""
+    msg = (reason.strip() + '\n\n' if reason else '') + \
+        '要在浏览器里自己登录一次学习通吗？\n' \
+        '（登录完会自动关掉浏览器并开始播放）'
+    title = '需要登录学习通'
     try:
         import tkinter.messagebox as mb
         root = tk._default_root
-        msg = (reason.strip() + '\n\n' if reason else '') + \
-            '要在浏览器里自己登录一次学习通吗？\n' \
-            '（登录完会自动关掉浏览器并开始播放）'
         if root is not None:
-            return bool(mb.askyesno('需要登录学习通', msg, parent=root))
-        return bool(mb.askyesno('需要登录学习通', msg))
+            top = tk.Toplevel(root)
+            top.attributes('-topmost', True)
+            top.withdraw()
+            try:
+                return bool(mb.askyesno(title, msg, parent=top))
+            finally:
+                top.destroy()
+        holder = tk.Tk()
+        holder.withdraw()
+        holder.attributes('-topmost', True)
+        holder.update_idletasks()
+        try:
+            return bool(mb.askyesno(title, msg, parent=holder))
+        finally:
+            holder.destroy()
     except Exception:
         return True
