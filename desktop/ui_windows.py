@@ -445,7 +445,8 @@ class SubtitleBar:
 
 def control_window(room, data, opts, player, kind):
     W = _watch()
-    streams = {'main': data.get('main'), 'ppt': data.get('ppt')}
+    streams = {'main': data.get('main'), 'ppt': data.get('ppt'),
+               'other': data.get('other')}
     course = (data.get('course') or '').strip()
     views = [(key, label) for key, label in W.VIEWS if streams.get(key)]
     if not views:

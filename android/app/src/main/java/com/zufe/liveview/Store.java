@@ -145,14 +145,9 @@ public final class Store {
         return null;
     }
 
-    /** 手机版链接统一成 index 页面。 */
+    /** 原样保留，只去掉首尾空白：index 与 mobile_live 两个页面拿到的是同一路流。 */
     public static String normalize(String link) {
-        if (link == null) {
-            return "";
-        }
-        String s = link.trim();
-        s = s.replaceAll("(?i)/vri-zelda/mobile_live", "/vri-zelda/index");
-        return s;
+        return link == null ? "" : link.trim();
     }
 
     /** 返回 null 表示没问题，否则返回原因。 */

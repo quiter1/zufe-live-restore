@@ -81,6 +81,8 @@ public final class PageParser {
                     s.enc = v.optString("urlEnc", "").trim();
                 } else if ("ppt".equals(type) && s.ppt.isEmpty()) {
                     s.ppt = url;
+                } else if ("other".equals(type) && s.other.isEmpty()) {
+                    s.other = url;
                 }
             }
             if (!s.ok()) {

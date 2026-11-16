@@ -313,7 +313,7 @@ def streams_from_html(html, room):
     for item in videos:
         kind = str(item.get('type') or '')
         link = item.get('realHttp')
-        if kind in ('main', 'ppt') and link:
+        if kind in ('main', 'ppt', 'other') and link:
             streams[kind] = link
             if kind == 'main' and not enc:
                 enc = str(item.get('urlEnc') or '')
@@ -321,7 +321,7 @@ def streams_from_html(html, room):
         return None
     course = str(settings.get('coursename') or settings.get('courseName') or '').strip()
     return {'room': room, 'main': streams.get('main'), 'ppt': streams.get('ppt'),
-            'course': course,
+            'other': streams.get('other'), 'course': course,
             'fid': args.get('fid') or settings.get('fid') or 0,
             'speechid': speech.get('speechId') or settings.get('speechId') or 0,
             'enc': enc or str(speech.get('enc') or '')}
@@ -551,6 +551,7 @@ def _cache_streams(room, data):
     try:
         save_json(CACHE_FILE, {'room': room, 'main': data.get('main', ''),
                                'ppt': data.get('ppt', ''),
+                               'other': data.get('other', ''),
                                'fid': data.get('fid') or 0,
                                'speechid': data.get('speechid') or 0,
                                'enc': data.get('enc') or '',
@@ -640,7 +641,7 @@ def find_ffplay():
     return None
 
 
-VIEWS = (('main', '课堂画面'), ('ppt', '电脑桌面'))
+VIEWS = (('main', '课堂画面'), ('ppt', '电脑桌面'), ('other', '教室全景'))
 
 
 def _start_player(url, title, opts, player, kind):
@@ -694,7 +695,8 @@ def play(room, opts=None):
     streams, course, data = {}, '', {}
     try:
         data = resolve_stream(room, log=print)
-        streams = {'main': data.get('main'), 'ppt': data.get('ppt')}
+        streams = {'main': data.get('main'), 'ppt': data.get('ppt'),
+                   'other': data.get('other')}
         course = data.get('course') or ''
     except NeedAccount:
         print('[!] 需要登录：请在弹出的浏览器里登录一次，或点【浏览器登录】')
@@ -705,7 +707,8 @@ def play(room, opts=None):
             data = dict(cached)
             data['main'] = cached.get('main') or cached.get('url')
             data['room'] = room
-            streams = {'main': data['main'], 'ppt': data.get('ppt')}
+            streams = {'main': data['main'], 'ppt': data.get('ppt'),
+                       'other': data.get('other')}
             course = data.get('course') or ''
             print(f'  [!] 解析失败（{exc}），改用上次缓存到的地址')
         else:

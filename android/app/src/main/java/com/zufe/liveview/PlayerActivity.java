@@ -53,6 +53,7 @@ public class PlayerActivity extends Activity {
     private TextView info;
     private Button btnMain;
     private Button btnPpt;
+    private Button btnExtra;
     private Button btnSub;
     private Button btnPanel;
     private Button btnFull;
@@ -66,12 +67,14 @@ public class PlayerActivity extends Activity {
     private String course = "";
     private String mainUrl = "";
     private String pptUrl = "";
+    private String extraUrl = "";
     private String link = "";
     private String enc = "";
     private String fid = "";
     private String speechid = "";
 
     private boolean showingPpt;
+    private boolean showingExtra;
     private boolean fullscreen;
     private boolean subOn = true;
     private boolean panelOn;
@@ -91,6 +94,7 @@ public class PlayerActivity extends Activity {
         course = nz(it.getStringExtra("course")).trim();
         mainUrl = nz(it.getStringExtra("main"));
         pptUrl = nz(it.getStringExtra("ppt"));
+        extraUrl = nz(it.getStringExtra("other"));
         link = nz(it.getStringExtra("link"));
         enc = nz(it.getStringExtra("enc"));
         fid = nz(it.getStringExtra("fid"));
@@ -153,6 +157,11 @@ public class PlayerActivity extends Activity {
         btnPpt.setEnabled(!pptUrl.isEmpty());
         btnPpt.setAlpha(pptUrl.isEmpty() ? 0.4f : 1f);
 
+        btnExtra = Ui.chip(this, "教室全景", false);
+        btnExtra.setOnClickListener(v -> switchToExtra());
+        btnExtra.setVisibility(extraUrl.isEmpty() ? View.GONE : View.VISIBLE);
+        bar.addView(btnExtra, margin(dp(4), dp(2)));
+
         btnSub = Ui.chip(this, "字幕", true);
         btnSub.setOnClickListener(v -> {
             subOn = !subOn;
@@ -176,7 +185,7 @@ public class PlayerActivity extends Activity {
         Button btnRetry = Ui.chip(this, "重连", false);
         btnRetry.setOnClickListener(v -> {
             retries = 0;
-            play(showingPpt);
+            play(true);
             startSubs();
         });
         bar.addView(btnRetry, margin(dp(4), dp(2)));
@@ -310,7 +319,7 @@ public class PlayerActivity extends Activity {
     }
 
     private void refreshLabels() {
-        String type = showingPpt ? "电脑桌面" : "课堂画面";
+        String type = showingExtra ? "教室全景" : (showingPpt ? "电脑桌面" : "课堂画面");
         StringBuilder sb = new StringBuilder(type);
         if (!room.isEmpty()) {
             sb.append(" · ").append(room);
@@ -319,8 +328,13 @@ public class PlayerActivity extends Activity {
             sb.append(" · ").append(course);
         }
         info.setText(sb.toString());
-        Ui.setChip(btnMain, !showingPpt);
-        Ui.setChip(btnPpt, showingPpt);
+        Ui.setChip(btnMain, !showingPpt && !showingExtra);
+        Ui.setChip(btnPpt, showingPpt && !showingExtra);
+        if (btnExtra != null) {
+            Ui.setChip(btnExtra, showingExtra);
+            btnExtra.setVisibility(extraUrl.isEmpty() ? View.GONE : View.VISIBLE);
+            btnExtra.setAlpha(extraUrl.isEmpty() ? 0.4f : 1f);
+        }
         Ui.setChip(btnSub, subOn);
         Ui.setChip(btnPanel, panelOn);
         btnPpt.setEnabled(!pptUrl.isEmpty());
@@ -333,15 +347,33 @@ public class PlayerActivity extends Activity {
             toast("这间教室没有电脑桌面画面");
             return;
         }
-        if (ppt == showingPpt) {
+        if (ppt == showingPpt && !showingExtra) {
             return;
         }
+        showingExtra = false;
         showingPpt = ppt;
         retries = 0;
         play(true);
     }
 
+    private void switchToExtra() {
+        if (extraUrl.isEmpty()) {
+            toast("这间教室没有教室全景画面");
+            return;
+        }
+        if (showingExtra) {
+            return;
+        }
+        showingExtra = true;
+        showingPpt = false;
+        retries = 0;
+        play(true);
+    }
+
     private String currentUrl() {
+        if (showingExtra && !extraUrl.isEmpty()) {
+            return extraUrl;
+        }
         if (showingPpt) {
             return pptUrl;
         }

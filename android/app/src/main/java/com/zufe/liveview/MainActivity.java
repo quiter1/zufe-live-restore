@@ -225,6 +225,7 @@ public class MainActivity extends Activity {
         i.putExtra("course", s.course);
         i.putExtra("main", s.main);
         i.putExtra("ppt", s.ppt);
+        i.putExtra("other", s.other);
         i.putExtra("enc", s.enc);
         i.putExtra("fid", s.fid);
         i.putExtra("speechid", s.speechid);

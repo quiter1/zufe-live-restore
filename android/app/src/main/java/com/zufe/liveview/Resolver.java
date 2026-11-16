@@ -23,17 +23,34 @@ public final class Resolver {
     private Resolver() {
     }
 
+    /** index 与 mobile_live 互相换一个，作为兜底地址。 */
+    static String alt(String link) {
+        String l = link == null ? "" : link.trim();
+        if (l.toLowerCase(java.util.Locale.ROOT).contains("/vri-zelda/mobile_live")) {
+            return l.replaceAll("(?i)/vri-zelda/mobile_live", "/vri-zelda/index");
+        }
+        if (l.toLowerCase(java.util.Locale.ROOT).contains("/vri-zelda/index")) {
+            return l.replaceAll("(?i)/vri-zelda/index", "/vri-zelda/mobile_live");
+        }
+        return "";
+    }
+
     public static Streams resolve(Context ctx, String room, String link) throws Exception {
         String cookie = webviewCookie(link);
         if (cookie != null) {
-            try {
-                String html = HttpHelper.get(link, cookie);
-                Streams s = PageParser.parse(html);
-                if (s != null) {
-                    return s;
+            for (String url : new String[]{link, alt(link)}) {
+                if (url == null || url.isEmpty()) {
+                    continue;
                 }
-            } catch (Exception ignored) {
-                // cookie 过期、网络抖动，都往下走账号密码
+                try {
+                    String html = HttpHelper.get(url, cookie);
+                    Streams s = PageParser.parse(html);
+                    if (s != null) {
+                        return s;
+                    }
+                } catch (Exception ignored) {
+                    // cookie 过期、网络抖动，换下一个地址 / 往下走账号密码
+                }
             }
         }
 
@@ -117,6 +134,13 @@ public final class Resolver {
         if (s == null && !next.equals(link)) {
             page = client.get(link);
             s = PageParser.parse(page.html);
+        }
+        if (s == null) {
+            String other = alt(link);
+            if (!other.isEmpty()) {
+                page = client.get(other);
+                s = PageParser.parse(page.html);
+            }
         }
         if (s == null) {
             throw new IOException("登录成功了，但这个教室现在没有画面（可能还没开始直播）");
